@@ -2270,6 +2270,18 @@ class NPUModelRunner(GPUModelRunner):
         alignment = 2 * 1024 * 1024
         for kv_cache_tensor in kv_cache_config.kv_cache_tensors:
             # TODO: REFACTOR ME to sharing hybrid cache
+            if self.use_hybrid_blocks:
+                kv_cache_size = kv_cache_tensor.size if self.vllm_config.kv_transfer_config is None else kv_cache_tensor.size + alignment
+                tensor = torch.zeros(kv_cache_size,
+                                     dtype=torch.int8,
+                                     device=self.device)
+                if self.vllm_config.kv_transfer_config is not None:
+                    tensor = self._align_memory(
+                        tensor, alignment)[:kv_cache_tensor.size]
+                for layer_name in kv_cache_tensor.shared_by:
+                    kv_cache_raw_tensors[layer_name] = tensor
+                continue
+
             for idx in range(len(kv_cache_tensor.shared_by)):
                 layer_name = kv_cache_tensor.shared_by[idx]
                 if "linear_attn" in layer_name and layer_name not in kv_cache_raw_tensors.keys(
@@ -2408,19 +2420,23 @@ class NPUModelRunner(GPUModelRunner):
                 # encounter OOM issue
                 if isinstance(kv_cache_spec, FullAttentionSpec):
                     raw_dsa_k_tensor = None
-                    if self.use_sparse:
-                        raw_k_tensor, raw_v_tensor, raw_dsa_k_tensor = kv_cache_raw_tensors[  # type: ignore
-                            layer_name]
-                        assert raw_dsa_k_tensor is not None
-                        sum_page_size_bytes = raw_k_tensor.numel(
-                        ) + raw_v_tensor.numel() + raw_dsa_k_tensor.numel()
+                    if self.use_hybrid_blocks:
+                        raw_kv_tensor = kv_cache_raw_tensors[layer_name]
+                        sum_page_size_bytes = raw_kv_tensor.numel()
                     else:
-                        raw_k_tensor, raw_v_tensor = kv_cache_raw_tensors[  # type: ignore
-                            layer_name]
-                        sum_page_size_bytes = raw_k_tensor.numel(
-                        ) + raw_v_tensor.numel()
-                    assert raw_k_tensor is not None
-                    assert raw_v_tensor is not None
+                        if self.use_sparse:
+                            raw_k_tensor, raw_v_tensor, raw_dsa_k_tensor = kv_cache_raw_tensors[  # type: ignore
+                                layer_name]
+                            assert raw_dsa_k_tensor is not None
+                            sum_page_size_bytes = raw_k_tensor.numel(
+                            ) + raw_v_tensor.numel() + raw_dsa_k_tensor.numel()
+                        else:
+                            raw_k_tensor, raw_v_tensor = kv_cache_raw_tensors[  # type: ignore
+                                layer_name]
+                            sum_page_size_bytes = raw_k_tensor.numel(
+                            ) + raw_v_tensor.numel()
+                        assert raw_k_tensor is not None
+                        assert raw_v_tensor is not None
                     assert sum_page_size_bytes % kv_cache_spec.page_size_bytes == 0
                     num_blocks = sum_page_size_bytes // kv_cache_spec.page_size_bytes
 
@@ -2448,6 +2464,17 @@ class NPUModelRunner(GPUModelRunner):
                             kv_cache_spec.num_kv_heads,
                             kv_cache_spec.head_size)
                     dtype = kv_cache_spec.dtype
+
+                    if self.use_hybrid_blocks:
+                        k_cache = raw_kv_tensor[:int(sum_page_size_bytes //
+                                                     2)].view(dtype).view(
+                            kv_cache_shape[1:])
+                        v_cache = raw_kv_tensor[int(sum_page_size_bytes //
+                                                    2):].view(dtype).view(
+                            kv_cache_shape[1:])
+                        kv_caches[layer_name] = (k_cache, v_cache)
+                        continue
+
                     if not self.model_config.use_mla:
                         k_shape = kv_cache_shape[1:]
                         v_shape = k_shape
