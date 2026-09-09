@@ -3027,11 +3027,11 @@ class MooncakeConnectorWorker:
                             pcp_rank_offset = tp_size * pcp_rank
                             for dcp_rank in range(dcp_size):
                                 cp_group.append(
-                                    dcp_rank 
-                                    + port_base 
-                                    + pp_rank_offset 
-                                    + pcp_rank_offset 
-                                    + dcp_repeat_offset 
+                                    dcp_rank
+                                    + port_base
+                                    + pp_rank_offset
+                                    + pcp_rank_offset
+                                    + dcp_repeat_offset
                                     + kv_head_group_offset
                                 )
                         cp_group_meta[kv_head_group]["cp_groups"].append(cp_group)
