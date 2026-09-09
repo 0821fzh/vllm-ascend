@@ -3027,7 +3027,12 @@ class MooncakeConnectorWorker:
                             pcp_rank_offset = tp_size * pcp_rank
                             for dcp_rank in range(dcp_size):
                                 cp_group.append(
-                                    dcp_rank + port_base + pp_rank_offset + pcp_rank_offset + dcp_repeat_offset + kv_head_group_offset
+                                    dcp_rank 
+                                    + port_base 
+                                    + pp_rank_offset 
+                                    + pcp_rank_offset 
+                                    + dcp_repeat_offset 
+                                    + kv_head_group_offset
                                 )
                         cp_group_meta[kv_head_group]["cp_groups"].append(cp_group)
 
@@ -3038,7 +3043,9 @@ class MooncakeConnectorWorker:
             p_node_cp_group_meta = get_cp_group_meta(
                 prefill_tp_size, meta.remote_pcp_size, meta.remote_dcp_size, meta.remote_port, self._prefill_pp_size
             )
-            d_node_cp_group_meta = get_cp_group_meta(self.tp_size, self.pcp_size, self.dcp_size, self.side_channel_port, self._decode_pp_size)
+            d_node_cp_group_meta = get_cp_group_meta(
+                self.tp_size, self.pcp_size, self.dcp_size, self.side_channel_port, self._decode_pp_size
+            )
             local_remote_block_port_mappings: dict[int, list[list[int]]] = {}
             for d_node_head_key in d_node_cp_group_meta:
                 for p_node_head_key in p_node_cp_group_meta:
